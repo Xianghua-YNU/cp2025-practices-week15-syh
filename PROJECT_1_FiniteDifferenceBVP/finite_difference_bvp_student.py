@@ -38,22 +38,45 @@ def solve_bvp_finite_difference(n):
         tuple: (x_grid, y_solution)
             x_grid (np.ndarray): 包含边界点的完整网格
             y_solution (np.ndarray): 对应的解值
-    
-    TODO: 实现有限差分法
-    Hints:
-    1. 创建网格点 x_i = i*h, i=0,1,...,n+1, 其中 h = 5/(n+1)
-    2. 对于内部点 i=1,2,...,n，使用中心差分近似：
-       y''_i ≈ (y_{i+1} - 2*y_i + y_{i-1}) / h^2
-       y'_i ≈ (y_{i+1} - y_{i-1}) / (2*h)
-    3. 构建线性系统 A*y = b，其中 y = [y_1, y_2, ..., y_n]
-    4. 边界条件：y_0 = 0, y_{n+1} = 3
-    5. 对于每个内部点，重新整理方程得到系数
-    6. 处理边界条件对右端向量的影响
     """
-    # TODO: 在此实现有限差分法 (预计30-40行代码)
-    # [STUDENT_CODE_HERE]
+    # 创建网格
+    h = 5 / (n + 1)
+    x_grid = np.linspace(0, 5, n + 2)
     
-    raise NotImplementedError("请在此处实现有限差分法")
+    # 初始化系数矩阵 A 和右端向量 b
+    A = np.zeros((n, n))
+    b = np.zeros(n)
+    
+    # 构建系数矩阵和右端向量
+    for i in range(n):
+        x = x_grid[i + 1]  # i+1 是因为跳过了边界点 x=0
+        
+        # 中心差分近似 y'' 和 y'
+        # 方程: y'' + sin(x)*y' + exp(x)*y = x^2
+        if i == 0:  # 第一个内部点 (考虑左边界条件 y(0)=0)
+            A[i, i] = -2 / h**2 + np.exp(x)
+            A[i, i+1] = 1 / h**2 + np.sin(x) / (2*h)
+            b[i] = x**2 - (1 / h**2 - np.sin(x) / (2*h)) * 0  # 减去左边界项
+        elif i == n-1:  # 最后一个内部点 (考虑右边界条件 y(5)=3)
+            A[i, i-1] = 1 / h**2 - np.sin(x) / (2*h)
+            A[i, i] = -2 / h**2 + np.exp(x)
+            b[i] = x**2 - (1 / h**2 + np.sin(x) / (2*h)) * 3  # 减去右边界项
+        else:  # 中间点
+            A[i, i-1] = 1 / h**2 - np.sin(x) / (2*h)
+            A[i, i] = -2 / h**2 + np.exp(x)
+            A[i, i+1] = 1 / h**2 + np.sin(x) / (2*h)
+            b[i] = x**2
+    
+    # 求解线性方程组
+    y_inner = solve(A, b)
+    
+    # 组合完整解 (包括边界点)
+    y_solution = np.zeros(n + 2)
+    y_solution[0] = 0  # 左边界条件
+    y_solution[1:-1] = y_inner
+    y_solution[-1] = 3  # 右边界条件
+    
+    return x_grid, y_solution
 
 
 # ============================================================================
@@ -71,24 +94,8 @@ def ode_system_for_solve_bvp(x, y):
     系统方程：
     dy[0]/dx = y[1]
     dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x^2
-    
-    Args:
-        x (float or array): 自变量
-        y (array): 状态变量 [y, y']
-    
-    Returns:
-        array: 导数 [dy/dx, dy'/dx]
-    
-    TODO: 实现ODE系统的右端项
-    Hints:
-    1. 提取 y[0] 和 y[1] 分别表示 y(x) 和 y'(x)
-    2. 根据一阶系统方程计算导数
-    3. 使用 np.vstack 组合返回结果
     """
-    # TODO: 在此实现一阶ODE系统 (预计5-8行代码)
-    # [STUDENT_CODE_HERE]
-    
-    raise NotImplementedError("请在此处实现ODE系统")
+    return np.vstack((y[1], -np.sin(x) * y[1] - np.exp(x) * y[0] + x**2))
 
 
 def boundary_conditions_for_solve_bvp(ya, yb):
@@ -101,17 +108,8 @@ def boundary_conditions_for_solve_bvp(ya, yb):
     
     Returns:
         array: 边界条件残差 [y(0) - 0, y(5) - 3]
-    
-    TODO: 实现边界条件
-    Hints:
-    1. ya[0] 是左边界的 y 值，应该等于 0
-    2. yb[0] 是右边界的 y 值，应该等于 3
-    3. 返回残差数组
     """
-    # TODO: 在此实现边界条件 (预计1-2行代码)
-    # [STUDENT_CODE_HERE]
-    
-    raise NotImplementedError("请在此处实现边界条件")
+    return np.array([ya[0] - 0, yb[0] - 3])
 
 
 def solve_bvp_scipy(n_initial_points=11):
@@ -125,18 +123,27 @@ def solve_bvp_scipy(n_initial_points=11):
         tuple: (x_solution, y_solution)
             x_solution (np.ndarray): 解的 x 坐标数组
             y_solution (np.ndarray): 解的 y 坐标数组
-    
-    TODO: 实现 solve_bvp 方法
-    Hints:
-    1. 创建初始网格 x_initial
-    2. 创建初始猜测 y_initial (2×n 数组)
-    3. 调用 solve_bvp 函数
-    4. 检查求解是否成功并提取解
     """
-    # TODO: 在此实现 solve_bvp 方法 (预计10-15行代码)
-    # [STUDENT_CODE_HERE]
+    # 创建初始网格
+    x_initial = np.linspace(0, 5, n_initial_points)
     
-    raise NotImplementedError("请在此处实现 solve_bvp 方法")
+    # 创建初始猜测 (线性函数 y = 0.6x 满足边界条件)
+    y_initial = np.zeros((2, n_initial_points))
+    y_initial[0] = 0.6 * x_initial  # y 初始猜测
+    y_initial[1] = 0.6             # y' 初始猜测
+    
+    # 求解BVP
+    sol = solve_bvp(ode_system_for_solve_bvp, boundary_conditions_for_solve_bvp, 
+                    x_initial, y_initial, max_nodes=10000)
+    
+    if not sol.success:
+        raise RuntimeError(f"solve_bvp failed with message: {sol.message}")
+    
+    # 在更密集的网格上获取解
+    x_solution = np.linspace(0, 5, 500)
+    y_solution = sol.sol(x_solution)[0]  # 只取 y 值 (忽略 y')
+    
+    return x_solution, y_solution
 
 
 # ============================================================================
