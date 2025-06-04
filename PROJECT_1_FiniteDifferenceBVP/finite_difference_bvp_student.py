@@ -124,32 +124,12 @@ def solve_bvp_scipy(n_initial_points=11):
     # 创建初始网格
     x_initial = np.linspace(0, 5, n_initial_points)
     
-    # 改进的初始猜测函数
-    # 基于问题特性设计，使用五次多项式拟合
-    def initial_guess(x):
-        # 经过精细调整的系数，通过分析问题特性得到
-        a = 0.00108
-        b = -0.0175
-        c = 0.074
-        d = 0.612
-        e = 0
-        return a*x**5 + b*x**4 + c*x**3 + d*x**2 + e*x
-    
-    # 计算初始猜测及其导数
+    # 简化的初始猜测 - 线性插值
     y_initial = np.zeros((2, n_initial_points))
-    y_initial[0] = initial_guess(x_initial)  # y 的初始猜测
+    y_initial[0] = np.linspace(0, 3, n_initial_points)  # y 的初始猜测（线性插值）
+    y_initial[1] = np.ones(n_initial_points) * 0.6      # y' 的初始猜测（常数）
     
-    # 计算导数的解析表达式
-    def derivative(x):
-        a = 0.00108
-        b = -0.0175
-        c = 0.074
-        d = 0.612
-        return 5*a*x**4 + 4*b*x**3 + 3*c*x**2 + 2*d*x
-    
-    y_initial[1] = derivative(x_initial)  # y' 的初始猜测
-    
-    # 求解BVP，只保留旧版SciPy支持的参数
+    # 求解BVP，只保留基本参数
     sol = solve_bvp(
         ode_system_for_solve_bvp,
         boundary_conditions_for_solve_bvp,
@@ -157,12 +137,13 @@ def solve_bvp_scipy(n_initial_points=11):
         y_initial,
     )
     
+    # 检查求解是否成功
     if not sol.success:
-        # 尝试使用自适应网格策略
-        x_dense = np.linspace(0, 5, n_initial_points * 10)  # 非常密集的初始网格
+        # 尝试使用更密集的初始网格
+        x_dense = np.linspace(0, 5, n_initial_points * 5)
         y_dense = np.zeros((2, len(x_dense)))
-        y_dense[0] = initial_guess(x_dense)
-        y_dense[1] = derivative(x_dense)
+        y_dense[0] = np.linspace(0, 3, len(x_dense))
+        y_dense[1] = np.ones(len(x_dense)) * 0.6
         
         sol = solve_bvp(
             ode_system_for_solve_bvp,
@@ -172,13 +153,12 @@ def solve_bvp_scipy(n_initial_points=11):
         )
         
         if not sol.success:
-            # 最后的备用方案：使用分段线性插值作为初始猜测
-            print(f"Warning: solve_bvp 尝试失败，使用分段线性插值作为初始猜测: {sol.message}")
-            key_points = np.array([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
-            key_values = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7, 3.0])
+            # 最终尝试：使用分段线性插值作为初始猜测
+            key_points = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+            key_values = np.array([0.0, 0.5, 1.2, 1.8, 2.5, 3.0])
             y_piecewise = np.interp(x_dense, key_points, key_values)
             
-            # 计算分段导数
+            # 分段导数
             y_piecewise_deriv = np.zeros_like(x_dense)
             for i in range(1, len(key_points)):
                 mask = (x_dense >= key_points[i-1]) & (x_dense <= key_points[i])
@@ -193,17 +173,11 @@ def solve_bvp_scipy(n_initial_points=11):
             )
             
             if not sol.success:
-                raise RuntimeError(f"solve_bvp 最终失败: {sol.message}")
+                raise RuntimeError(f"solve_bvp 求解失败: {sol.message}")
     
     # 在500个点的网格上获取解，与测试要求一致
     x_solution = np.linspace(0, 5, 500)
     y_solution = sol.sol(x_solution)[0]
-    
-    # 验证边界条件（调试用）
-    if not np.allclose(y_solution[0], 0.0, atol=1e-7):
-        print(f"警告: 左边界条件未完全满足: y(0) = {y_solution[0]:.8f}")
-    if not np.allclose(y_solution[-1], 3.0, atol=1e-7):
-        print(f"警告: 右边界条件未完全满足: y(5) = {y_solution[-1]:.8f}")
     
     return x_solution, y_solution
 
@@ -220,86 +194,87 @@ if __name__ == "__main__":
     print("=" * 60)
     
     # 设置参数
-    n_points = 50  # 有限差分法的内部网格点数
+    n_points = 100  # 离散点数
+    
+    print(f"\n求解区间: [0, 5]")
+    print(f"边界条件: y(0) = 0, y(5) = 3")
+    print(f"离散点数: {n_points}")
+    
+    # ========================================================================
+    # 方法1：有限差分法
+    # ========================================================================
+    print("\n" + "-" * 60)
+    print("方法1：有限差分法 (Finite Difference Method)")
+    print("-" * 60)
     
     try:
-        # 方法1：有限差分法
-        print("\n1. 有限差分法求解...")
-        x_fd, y_fd = solve_bvp_finite_difference(n_points)
-        print(f"   网格点数：{len(x_fd)}")
-        print(f"   y(0) = {y_fd[0]:.6f}, y(5) = {y_fd[-1]:.6f}")
-        
-    except NotImplementedError:
-        print("   有限差分法尚未实现")
+        x_fd, y_fd = solve_bvp_finite_difference(n_points - 2)  # 减去边界点
+        print("有限差分法求解成功！")
+    except Exception as e:
+        print(f"有限差分法求解失败: {e}")
         x_fd, y_fd = None, None
     
+    # ========================================================================
+    # 方法2：scipy.integrate.solve_bvp
+    # ========================================================================
+    print("\n" + "-" * 60)
+    print("方法2：scipy.integrate.solve_bvp")
+    print("-" * 60)
+    
     try:
-        # 方法2：scipy.integrate.solve_bvp
-        print("\n2. scipy.integrate.solve_bvp 求解...")
-        x_scipy, y_scipy = solve_bvp_scipy()
-        print(f"   网格点数：{len(x_scipy)}")
-        print(f"   y(0) = {y_scipy[0]:.6f}, y(5) = {y_scipy[-1]:.6f}")
-        
-    except NotImplementedError:
-        print("   solve_bvp 方法尚未实现")
+        x_scipy, y_scipy = solve_bvp_scipy(n_points)
+        print("solve_bvp 求解成功！")
+    except Exception as e:
+        print(f"solve_bvp 求解失败: {e}")
         x_scipy, y_scipy = None, None
     
-    # 绘图比较
+    # ========================================================================
+    # 结果可视化与比较
+    # ========================================================================
+    print("\n" + "-" * 60)
+    print("结果可视化与比较")
+    print("-" * 60)
+    
+    # 创建图形
     plt.figure(figsize=(12, 8))
     
-    # 子图1：解的比较
-    plt.subplot(2, 1, 1)
+    # 绘制两种方法的解
     if x_fd is not None and y_fd is not None:
-        plt.plot(x_fd, y_fd, 'b-o', markersize=3, label='Finite Difference Method', linewidth=2)
+        plt.plot(x_fd, y_fd, 'b-', linewidth=2, label='Finite Difference Method', alpha=0.8)
+    
     if x_scipy is not None and y_scipy is not None:
-        plt.plot(x_scipy, y_scipy, 'r--', label='scipy.integrate.solve_bvp', linewidth=2)
+        plt.plot(x_scipy, y_scipy, 'r--', linewidth=2, label='scipy solve_bvp', alpha=0.8)
     
-    plt.xlabel('x')
-    plt.ylabel('y(x)')
-    plt.title('Comparison of Numerical Solutions for BVP')
-    plt.legend()
+    # 标记边界条件
+    plt.scatter([0, 5], [0, 3], color='red', s=100, zorder=5, label='Boundary Conditions')
+    
+    # 图形美化
+    plt.xlabel('x', fontsize=12)
+    plt.ylabel('y(x)', fontsize=12)
+    plt.title(r"BVP Solution: $y'' + \sin(x)y' + e^x y = x^2$, $y(0)=0$, $y(5)=3$", 
+              fontsize=14, pad=20)
+    plt.legend(fontsize=11, loc='best')
     plt.grid(True, alpha=0.3)
-    
-    # 子图2：解的差异
-    plt.subplot(2, 1, 2)
-    if (x_fd is not None and y_fd is not None and 
-        x_scipy is not None and y_scipy is not None):
-        
-        # 将 scipy 解插值到有限差分网格上进行比较
-        y_scipy_interp = np.interp(x_fd, x_scipy, y_scipy)
-        difference = np.abs(y_fd - y_scipy_interp)
-        
-        plt.semilogy(x_fd, difference, 'g-', linewidth=2, label='|Finite Diff - solve_bvp|')
-        plt.xlabel('x')
-        plt.ylabel('Absolute Difference (log scale)')
-        plt.title('Difference Between Methods')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        # 数值比较
-        max_diff = np.max(difference)
-        mean_diff = np.mean(difference)
-        print(f"\n数值比较：")
-        print(f"   最大绝对误差：{max_diff:.2e}")
-        print(f"   平均绝对误差：{mean_diff:.2e}")
-    else:
-        plt.text(0.5, 0.5, 'Need both methods implemented\nfor comparison', 
-                ha='center', va='center', transform=plt.gca().transAxes, fontsize=12)
-        plt.title('Difference Plot (Not Available)')
-    
     plt.tight_layout()
+    
+    # 显示图形
     plt.show()
     
-    # 在特定点比较解的值
-    test_points = [1.0, 2.5, 4.0]
+    # ========================================================================
+    # 数值结果比较
+    # ========================================================================
     print("\n" + "-" * 60)
-    print("在特定点的解值比较")
+    print("数值结果比较")
     print("-" * 60)
+    
+    # 在几个特定点比较解的值
+    test_points = [1.0, 2.5, 4.0]
     
     for x_test in test_points:
         print(f"\n在 x = {x_test} 处的解值:")
         
         if x_fd is not None and y_fd is not None:
+            # 插值得到测试点的值
             y_test_fd = np.interp(x_test, x_fd, y_fd)
             print(f"  有限差分法:  {y_test_fd:.6f}")
         
@@ -307,6 +282,6 @@ if __name__ == "__main__":
             y_test_scipy = np.interp(x_test, x_scipy, y_scipy)
             print(f"  solve_bvp:   {y_test_scipy:.6f}")
     
-    print("\n=" * 60)
-    print("实验完成！")
+    print("\n" + "=" * 60)
+    print("求解完成！")
     print("=" * 60)
