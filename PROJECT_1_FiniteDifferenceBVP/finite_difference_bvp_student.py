@@ -121,34 +121,39 @@ def solve_bvp_scipy(n_initial_points=11):
     Returns:
         tuple: (x_solution, y_solution)
     """
-    # 创建初始网格
-    x_initial = np.linspace(0, 5, n_initial_points)
+    # 创建更密集的初始网格
+    x_initial = np.linspace(0, 5, n_initial_points * 5)
     
-    # 基于问题特性设计的初始猜测函数
-    # 使用分段二次函数，在不同区间使用不同参数
+    # 基于问题特性设计的高精度初始猜测函数
+    # 使用分段三次函数，在不同区间使用不同参数
     def initial_guess(x):
         y = np.zeros_like(x)
         for i, xi in enumerate(x):
             if xi <= 1.5:
-                # 左侧部分 - 二次函数，满足 y(0)=0
-                a = 0.2
-                y[i] = a * xi**2
-            elif xi <= 3.5:
-                # 中间部分 - 二次函数，平滑连接左右段
-                a = -0.1
-                b = 0.7
-                c = -0.375
-                y[i] = a * xi**2 + b * xi + c
+                # 左侧部分 - 三次函数，满足 y(0)=0
+                a = -0.05
+                b = 0.25
+                c = 0
+                d = 0
+                y[i] = a * xi**3 + b * xi**2 + c * xi + d
+            elif xi <= 3.0:
+                # 中间部分 - 三次函数，平滑连接左右段
+                a = 0.05
+                b = -0.4
+                c = 0.875
+                d = -0.25
+                y[i] = a * (xi-1.5)**3 + b * (xi-1.5)**2 + c * (xi-1.5) + d
             else:
-                # 右侧部分 - 二次函数，满足 y(5)=3
-                a = 0.12
-                b = -1.1
-                c = 3.25
-                y[i] = a * xi**2 + b * xi + c
+                # 右侧部分 - 三次函数，满足 y(5)=3
+                a = -0.02
+                b = 0.3
+                c = -1.3
+                d = 2.25
+                y[i] = a * (xi-3.0)**3 + b * (xi-3.0)**2 + c * (xi-3.0) + d
         return y
     
     # 计算初始猜测及其导数
-    y_initial = np.zeros((2, n_initial_points))
+    y_initial = np.zeros((2, len(x_initial)))
     y_initial[0] = initial_guess(x_initial)  # y 的初始猜测
     
     # 计算导数的解析表达式
@@ -156,76 +161,110 @@ def solve_bvp_scipy(n_initial_points=11):
         dydx = np.zeros_like(x)
         for i, xi in enumerate(x):
             if xi <= 1.5:
-                a = 0.2
-                dydx[i] = 2 * a * xi
-            elif xi <= 3.5:
-                a = -0.1
-                b = 0.7
-                dydx[i] = 2 * a * xi + b
+                a = -0.05
+                b = 0.25
+                dydx[i] = 3 * a * xi**2 + 2 * b * xi
+            elif xi <= 3.0:
+                a = 0.05
+                b = -0.4
+                c = 0.875
+                dydx[i] = 3 * a * (xi-1.5)**2 + 2 * b * (xi-1.5) + c
             else:
-                a = 0.12
-                b = -1.1
-                dydx[i] = 2 * a * xi + b
+                a = -0.02
+                b = 0.3
+                c = -1.3
+                dydx[i] = 3 * a * (xi-3.0)**2 + 2 * b * (xi-3.0) + c
         return dydx
     
     y_initial[1] = derivative(x_initial)  # y' 的初始猜测
     
-    # 尝试使用不同的求解策略
-    strategies = [
-        {"method": "initial", "x": x_initial, "y": y_initial},
-        {"method": "dense_grid", "x": np.linspace(0, 5, n_initial_points * 5), "y": None},
-        {"method": "piecewise_linear", "x": np.linspace(0, 5, n_initial_points * 10), "y": None},
-    ]
-    
-    # 为密集网格生成初始猜测
-    for strategy in strategies[1:]:
-        if strategy["y"] is None:
-            # 插值初始猜测到新网格
-            y_dense = np.zeros((2, len(strategy["x"])))
-            y_dense[0] = np.interp(strategy["x"], x_initial, y_initial[0])
+    # 使用严格的求解参数
+    try:
+        sol = solve_bvp(
+            ode_system_for_solve_bvp,
+            boundary_conditions_for_solve_bvp,
+            x_initial,
+            y_initial,
+            tol=1e-8,           # 提高求解精度
+            max_nodes=100000,   # 允许更多的节点
+            bc_tol=1e-8         # 边界条件的容差
+        )
+        
+        if not sol.success:
+            # 如果求解不成功，尝试使用更密集的网格
+            x_dense = np.linspace(0, 5, n_initial_points * 20)
+            y_dense = np.zeros((2, len(x_dense)))
+            y_dense[0] = np.interp(x_dense, x_initial, y_initial[0])
+            y_dense[1] = np.interp(x_dense, x_initial, y_initial[1])
             
-            # 计算导数的初始猜测
-            dx = np.diff(strategy["x"])
-            dy = np.diff(y_dense[0])
-            y_dense[1][1:-1] = (dy[1:] + dy[:-1]) / (dx[1:] + dx[:-1])
-            y_dense[1][0] = (y_dense[0][1] - y_dense[0][0]) / dx[0]
-            y_dense[1][-1] = (y_dense[0][-1] - y_dense[0][-2]) / dx[-1]
-            
-            strategy["y"] = y_dense
-    
-    # 尝试多种求解策略
-    last_error = None
-    for strategy in strategies:
-        try:
             sol = solve_bvp(
                 ode_system_for_solve_bvp,
                 boundary_conditions_for_solve_bvp,
-                strategy["x"],
-                strategy["y"],
+                x_dense,
+                y_dense,
+                tol=1e-8,
+                max_nodes=100000,
+                bc_tol=1e-8
             )
             
-            if sol.success:
-                # 在500个点的网格上获取解，与测试要求一致
-                x_solution = np.linspace(0, 5, 500)
-                y_solution = sol.sol(x_solution)[0]
-                
-                # 验证边界条件
-                if not np.allclose(y_solution[0], 0.0, atol=1e-7):
-                    print(f"警告: 左边界条件未完全满足: y(0) = {y_solution[0]:.8f}")
-                if not np.allclose(y_solution[-1], 3.0, atol=1e-7):
-                    print(f"警告: 右边界条件未完全满足: y(5) = {y_solution[-1]:.8f}")
-                
-                return x_solution, y_solution
-            else:
-                last_error = sol.message
-                print(f"策略 {strategy['method']} 求解失败: {sol.message}")
-                
-        except Exception as e:
-            last_error = str(e)
-            print(f"策略 {strategy['method']} 执行出错: {e}")
+            if not sol.success:
+                raise RuntimeError(f"solve_bvp 求解失败: {sol.message}")
+        
+        # 在500个点的网格上获取解，与测试要求一致
+        x_solution = np.linspace(0, 5, 500)
+        y_solution = sol.sol(x_solution)[0]
+        
+        # 验证边界条件
+        if not np.allclose(y_solution[0], 0.0, atol=1e-7):
+            print(f"警告: 左边界条件未完全满足: y(0) = {y_solution[0]:.8f}")
+        if not np.allclose(y_solution[-1], 3.0, atol=1e-7):
+            print(f"警告: 右边界条件未完全满足: y(5) = {y_solution[-1]:.8f}")
+        
+        return x_solution, y_solution
     
-    # 如果所有策略都失败，抛出异常
-    raise RuntimeError(f"所有求解策略都失败: {last_error}")
+    except Exception as e:
+        # 如果所有方法都失败，尝试使用打靶法作为后备
+        print(f"警告: solve_bvp 求解失败，尝试使用打靶法: {e}")
+        
+        from scipy.optimize import minimize_scalar
+        from scipy.integrate import solve_ivp
+        
+        def shooting_function(slope):
+            """打靶法目标函数"""
+            sol_ivp = solve_ivp(
+                ode_system_for_solve_bvp,
+                [0, 5],
+                [0, slope],
+                dense_output=True,
+                method='RK45',
+                rtol=1e-8,
+                atol=1e-8
+            )
+            return sol_ivp.sol(5)[0] - 3  # 目标是使y(5)=3
+        
+        # 使用优化找到合适的初始斜率
+        result = minimize_scalar(shooting_function, bounds=(-10, 10), method='bounded')
+        
+        if not result.success:
+            raise RuntimeError(f"打靶法求解失败: {result.message}")
+        
+        # 使用找到的斜率求解IVP
+        optimal_slope = result.x
+        sol_ivp = solve_ivp(
+            ode_system_for_solve_bvp,
+            [0, 5],
+            [0, optimal_slope],
+            dense_output=True,
+            method='RK45',
+            rtol=1e-8,
+            atol=1e-8
+        )
+        
+        # 在500个点的网格上获取解
+        x_solution = np.linspace(0, 5, 500)
+        y_solution = sol_ivp.sol(x_solution)[0]
+        
+        return x_solution, y_solution
 
 
 # ============================================================================
