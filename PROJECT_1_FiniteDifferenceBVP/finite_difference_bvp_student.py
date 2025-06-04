@@ -96,7 +96,6 @@ def ode_system_for_solve_bvp(x, y):
     dy[0]/dx = y[1]
     dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x**2
     """
-    # 修正：使用 np.power(x, 2) 代替 x^2
     return np.vstack((y[1], -np.sin(x) * y[1] - np.exp(x) * y[0] + np.power(x, 2)))
 
 
@@ -126,14 +125,13 @@ def solve_bvp_scipy(n_initial_points=11):
     x_initial = np.linspace(0, 5, n_initial_points)
     
     # 改进的初始猜测函数
-    # 基于问题特性设计，比简单线性猜测更接近真实解
+    # 基于问题特性设计，使用五次多项式拟合
     def initial_guess(x):
-        # 五次多项式拟合，满足边界条件
-        # 系数通过观察问题特性和多次实验调整得到
-        a = 0.002
-        b = -0.03
-        c = 0.1
-        d = 0.55
+        # 调整系数以更好地逼近真实解的形状
+        a = 0.0012
+        b = -0.02
+        c = 0.08
+        d = 0.6
         e = 0
         return a*x**5 + b*x**4 + c*x**3 + d*x**2 + e*x
     
@@ -143,28 +141,29 @@ def solve_bvp_scipy(n_initial_points=11):
     
     # 计算导数的解析表达式
     def derivative(x):
-        a = 0.002
-        b = -0.03
-        c = 0.1
-        d = 0.55
+        a = 0.0012
+        b = -0.02
+        c = 0.08
+        d = 0.6
         return 5*a*x**4 + 4*b*x**3 + 3*c*x**2 + 2*d*x
     
     y_initial[1] = derivative(x_initial)  # y' 的初始猜测
     
-    # 求解BVP
+    # 求解BVP，增加容差参数确保收敛和精度
     sol = solve_bvp(
         ode_system_for_solve_bvp,
         boundary_conditions_for_solve_bvp,
         x_initial,
         y_initial,
         max_nodes=10000,
-        tol=1e-6,
-        bc_tol=1e-6
+        tol=1e-8,       # 降低容差以提高精度
+        bc_tol=1e-8,    # 边界条件容差
+        verbose=0
     )
     
     if not sol.success:
-        # 尝试使用更密集的初始网格
-        x_dense = np.linspace(0, 5, n_initial_points * 2)
+        # 尝试使用更密集的初始网格和更严格的容差
+        x_dense = np.linspace(0, 5, n_initial_points * 3)  # 增加网格密度
         y_dense = np.zeros((2, len(x_dense)))
         y_dense[0] = initial_guess(x_dense)
         y_dense[1] = derivative(x_dense)
@@ -174,17 +173,41 @@ def solve_bvp_scipy(n_initial_points=11):
             boundary_conditions_for_solve_bvp,
             x_dense,
             y_dense,
-            max_nodes=10000,
-            tol=1e-7,
-            bc_tol=1e-7
+            max_nodes=20000,  # 增加最大节点数
+            tol=1e-9,         # 进一步降低容差
+            bc_tol=1e-9,
+            verbose=0
         )
         
         if not sol.success:
-            raise RuntimeError(f"solve_bvp failed: {sol.message}")
+            # 最后的备用方案：使用线性插值作为初始猜测
+            print(f"Warning: solve_bvp 多次尝试失败，使用线性插值作为初始猜测: {sol.message}")
+            y_linear = np.linspace(0, 3, len(x_dense))
+            y_linear_deriv = np.ones_like(x_dense) * 0.6
+            
+            sol = solve_bvp(
+                ode_system_for_solve_bvp,
+                boundary_conditions_for_solve_bvp,
+                x_dense,
+                np.vstack((y_linear, y_linear_deriv)),
+                max_nodes=20000,
+                tol=1e-8,
+                bc_tol=1e-8,
+                verbose=0
+            )
+            
+            if not sol.success:
+                raise RuntimeError(f"solve_bvp 最终失败: {sol.message}")
     
     # 在更密集的网格上获取解
     x_solution = np.linspace(0, 5, 500)
     y_solution = sol.sol(x_solution)[0]
+    
+    # 验证边界条件（调试用）
+    if not np.allclose(y_solution[0], 0.0, atol=1e-6):
+        print(f"警告: 左边界条件未完全满足: y(0) = {y_solution[0]:.8f}")
+    if not np.allclose(y_solution[-1], 3.0, atol=1e-6):
+        print(f"警告: 右边界条件未完全满足: y(5) = {y_solution[-1]:.8f}")
     
     return x_solution, y_solution
 
