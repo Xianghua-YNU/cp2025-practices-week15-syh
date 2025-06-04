@@ -128,10 +128,10 @@ def solve_bvp_scipy(n_initial_points=11):
     # 基于问题特性设计，使用五次多项式拟合
     def initial_guess(x):
         # 调整系数以更好地逼近真实解的形状
-        a = 0.0012
-        b = -0.02
-        c = 0.08
-        d = 0.6
+        a = 0.0011
+        b = -0.018
+        c = 0.075
+        d = 0.61
         e = 0
         return a*x**5 + b*x**4 + c*x**3 + d*x**2 + e*x
     
@@ -141,10 +141,10 @@ def solve_bvp_scipy(n_initial_points=11):
     
     # 计算导数的解析表达式
     def derivative(x):
-        a = 0.0012
-        b = -0.02
-        c = 0.08
-        d = 0.6
+        a = 0.0011
+        b = -0.018
+        c = 0.075
+        d = 0.61
         return 5*a*x**4 + 4*b*x**3 + 3*c*x**2 + 2*d*x
     
     y_initial[1] = derivative(x_initial)  # y' 的初始猜测
@@ -155,15 +155,15 @@ def solve_bvp_scipy(n_initial_points=11):
         boundary_conditions_for_solve_bvp,
         x_initial,
         y_initial,
-        max_nodes=10000,
-        tol=1e-8,       # 降低容差以提高精度
-        bc_tol=1e-8,    # 边界条件容差
+        max_nodes=20000,
+        tol=1e-9,       # 进一步降低容差
+        bc_tol=1e-9,    # 边界条件容差
         verbose=0
     )
     
     if not sol.success:
-        # 尝试使用更密集的初始网格和更严格的容差
-        x_dense = np.linspace(0, 5, n_initial_points * 3)  # 增加网格密度
+        # 尝试使用更密集的初始网格和不同的容差
+        x_dense = np.linspace(0, 5, n_initial_points * 5)  # 增加网格密度
         y_dense = np.zeros((2, len(x_dense)))
         y_dense[0] = initial_guess(x_dense)
         y_dense[1] = derivative(x_dense)
@@ -173,26 +173,33 @@ def solve_bvp_scipy(n_initial_points=11):
             boundary_conditions_for_solve_bvp,
             x_dense,
             y_dense,
-            max_nodes=20000,  # 增加最大节点数
-            tol=1e-9,         # 进一步降低容差
-            bc_tol=1e-9,
+            max_nodes=30000,  # 增加最大节点数
+            tol=5e-10,        # 进一步降低容差
+            bc_tol=5e-10,
             verbose=0
         )
         
         if not sol.success:
-            # 最后的备用方案：使用线性插值作为初始猜测
-            print(f"Warning: solve_bvp 多次尝试失败，使用线性插值作为初始猜测: {sol.message}")
-            y_linear = np.linspace(0, 3, len(x_dense))
-            y_linear_deriv = np.ones_like(x_dense) * 0.6
+            # 最后的备用方案：使用分段线性插值作为初始猜测
+            print(f"Warning: solve_bvp 多次尝试失败，使用分段线性插值作为初始猜测: {sol.message}")
+            # 创建一个分段线性函数，在x=0和x=5之间有几个关键点
+            key_points = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+            key_values = np.array([0.0, 0.6, 1.4, 2.0, 2.6, 3.0])
+            y_piecewise = np.interp(x_dense, key_points, key_values)
+            y_piecewise_deriv = np.zeros_like(x_dense)
+            for i in range(1, len(key_points)):
+                mask = (x_dense >= key_points[i-1]) & (x_dense <= key_points[i])
+                slope = (key_values[i] - key_values[i-1]) / (key_points[i] - key_points[i-1])
+                y_piecewise_deriv[mask] = slope
             
             sol = solve_bvp(
                 ode_system_for_solve_bvp,
                 boundary_conditions_for_solve_bvp,
                 x_dense,
-                np.vstack((y_linear, y_linear_deriv)),
-                max_nodes=20000,
-                tol=1e-8,
-                bc_tol=1e-8,
+                np.vstack((y_piecewise, y_piecewise_deriv)),
+                max_nodes=30000,
+                tol=1e-9,
+                bc_tol=1e-9,
                 verbose=0
             )
             
