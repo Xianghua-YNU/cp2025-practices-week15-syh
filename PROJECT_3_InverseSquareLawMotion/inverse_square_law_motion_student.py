@@ -10,9 +10,6 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 
-# 常量 (如果需要，学生可以自行定义或从参数传入)
-# 例如：GM = 1.0 # 引力常数 * 中心天体质量
-
 def derivatives(t, state_vector, gm_val):
     """
     计算状态向量 [x, y, vx, vy] 的导数。
@@ -31,16 +28,15 @@ def derivatives(t, state_vector, gm_val):
 
     返回:
         np.ndarray: 一维数组，包含导数 [dx/dt, dy/dt, dvx/dt, dvy/dt]。
-    
-    实现提示:
-    1. 从 state_vector 中解包出 x, y, vx, vy。
-    2. 计算 r_cubed = (x**2 + y**2)**1.5。
-    3. 注意处理 r_cubed 接近零的特殊情况（例如，如果 r 非常小，可以设定一个阈值避免除以零）。
-    4. 计算加速度 ax 和 ay。
-    5. 返回 [vx, vy, ax, ay]。
     """
-    # TODO: 学生在此处实现代码
-    raise NotImplementedError(f"请在 {__file__} 中实现 derivatives 函数")
+    x, y, vx, vy = state_vector
+    r_cubed = (x**2 + y**2)**1.5
+    
+    # 计算加速度分量
+    ax = -gm_val * x / r_cubed
+    ay = -gm_val * y / r_cubed
+    
+    return np.array([vx, vy, ax, ay])
 
 def solve_orbit(initial_conditions, t_span, t_eval, gm_val):
     """
@@ -55,16 +51,17 @@ def solve_orbit(initial_conditions, t_span, t_eval, gm_val):
     返回:
         scipy.integrate.OdeSolution: solve_ivp 返回的解对象。
                                      可以通过 sol.y 访问解的数组，sol.t 访问时间点。
-    
-    实现提示:
-    1. 调用 solve_ivp 函数。
-    2. `fun` 参数应为你的 `derivatives` 函数。
-    3. `args` 参数应为一个元组，包含传递给 `derivatives` 函数的额外参数 (gm_val,)。
-    4. 可以选择合适的数值方法 (method)，如 'RK45' (默认) 或 'DOP853'。
-    5. 设置合理的相对容差 (rtol) 和绝对容差 (atol) 以保证精度，例如 rtol=1e-7, atol=1e-9。
     """
-    # TODO: 学生在此处实现代码
-    raise NotImplementedError(f"请在 {__file__} 中实现 solve_orbit 函数")
+    return solve_ivp(
+        fun=derivatives,
+        t_span=t_span,
+        y0=initial_conditions,
+        t_eval=t_eval,
+        args=(gm_val,),
+        method='DOP853',
+        rtol=1e-7,
+        atol=1e-9
+    )
 
 def calculate_energy(state_vector, gm_val, m=1.0):
     """
@@ -78,19 +75,19 @@ def calculate_energy(state_vector, gm_val, m=1.0):
 
     返回:
         np.ndarray or float: （比）机械能。
-
-    实现提示:
-    1. 处理 state_vector 可能是一维（单个状态）或二维（多个状态的时间序列）的情况。
-    2. 从 state_vector 中提取 x, y, vx, vy。
-    3. 计算距离 r = np.sqrt(x**2 + y**2)。注意避免 r=0 导致除以零的错误。
-    4. 计算速度的平方 v_squared = vx**2 + vy**2。
-    5. 计算比动能 kinetic_energy_per_m = 0.5 * v_squared。
-    6. 计算比势能 potential_energy_per_m = -gm_val / r (注意处理 r=0 的情况)。
-    7. 比机械能 specific_energy = kinetic_energy_per_m + potential_energy_per_m。
-    8. 如果需要总能量，则乘以质量 m。
     """
-    # TODO: 学生在此处实现代码
-    raise NotImplementedError(f"请在 {__file__} 中实现 calculate_energy 函数")
+    if state_vector.ndim == 1:
+        x, y, vx, vy = state_vector
+        r = np.sqrt(x**2 + y**2)
+        v_squared = vx**2 + vy**2
+        specific_energy = 0.5 * v_squared - gm_val / r
+        return specific_energy * m if m != 1.0 else specific_energy
+    else:
+        x, y, vx, vy = state_vector.T
+        r = np.sqrt(x**2 + y**2)
+        v_squared = vx**2 + vy**2
+        specific_energy = 0.5 * v_squared - gm_val / r
+        return specific_energy * m if m != 1.0 else specific_energy
 
 def calculate_angular_momentum(state_vector, m=1.0):
     """
@@ -103,62 +100,239 @@ def calculate_angular_momentum(state_vector, m=1.0):
 
     返回:
         np.ndarray or float: （比）角动量。
-
-    实现提示:
-    1. 处理 state_vector 可能是一维或二维的情况。
-    2. 从 state_vector 中提取 x, y, vx, vy。
-    3. 计算比角动量 specific_Lz = x * vy - y * vx。
-    4. 如果需要总角动量，则乘以质量 m。
     """
-    # TODO: 学生在此处实现代码
-    raise NotImplementedError(f"请在 {__file__} 中实现 calculate_angular_momentum 函数")
+    if state_vector.ndim == 1:
+        x, y, vx, vy = state_vector
+        specific_Lz = x * vy - y * vx
+        return specific_Lz * m if m != 1.0 else specific_Lz
+    else:
+        x, y, vx, vy = state_vector.T
+        specific_Lz = x * vy - y * vx
+        return specific_Lz * m if m != 1.0 else specific_Lz
 
+def plot_orbits_by_energy(gm_val=1.0):
+    """
+    绘制不同能量下的轨道：椭圆、抛物线和双曲线
+    """
+    # 设置初始条件
+    t_start = 0
+    t_end_ellipse = 20
+    t_end_parabola = 30
+    t_end_hyperbola = 25
+    t_eval_ellipse = np.linspace(t_start, t_end_ellipse, 1000)
+    t_eval_parabola = np.linspace(t_start, t_end_parabola, 1000)
+    t_eval_hyperbola = np.linspace(t_start, t_end_hyperbola, 1000)
+    
+    # 椭圆轨道 (E < 0)
+    ic_ellipse = [1.0, 0.0, 0.0, 0.8]
+    sol_ellipse = solve_orbit(ic_ellipse, (t_start, t_end_ellipse), t_eval_ellipse, gm_val)
+    energy_ellipse = calculate_energy(sol_ellipse.y.T, gm_val)
+    angular_momentum_ellipse = calculate_angular_momentum(sol_ellipse.y.T)
+    
+    # 抛物线轨道 (E ≈ 0)
+    ic_parabola = [1.0, 0.0, 0.0, np.sqrt(2.0)]  # 逃逸速度
+    sol_parabola = solve_orbit(ic_parabola, (t_start, t_end_parabola), t_eval_parabola, gm_val)
+    energy_parabola = calculate_energy(sol_parabola.y.T, gm_val)
+    angular_momentum_parabola = calculate_angular_momentum(sol_parabola.y.T)
+    
+    # 双曲线轨道 (E > 0)
+    ic_hyperbola = [1.0, 0.0, 0.0, 1.5]
+    sol_hyperbola = solve_orbit(ic_hyperbola, (t_start, t_end_hyperbola), t_eval_hyperbola, gm_val)
+    energy_hyperbola = calculate_energy(sol_hyperbola.y.T, gm_val)
+    angular_momentum_hyperbola = calculate_angular_momentum(sol_hyperbola.y.T)
+    
+    # 绘制轨道
+    plt.figure(figsize=(12, 10))
+    
+    # 椭圆轨道
+    plt.subplot(2, 2, 1)
+    plt.plot(sol_ellipse.y[0], sol_ellipse.y[1], 'b-', label='椭圆轨道')
+    plt.plot(0, 0, 'ko', markersize=8, label='中心天体')
+    plt.title(f'椭圆轨道 (E ≈ {energy_ellipse[0]:.4f})')
+    plt.xlabel('x 坐标')
+    plt.ylabel('y 坐标')
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    
+    # 抛物线轨道
+    plt.subplot(2, 2, 2)
+    plt.plot(sol_parabola.y[0], sol_parabola.y[1], 'g-', label='抛物线轨道')
+    plt.plot(0, 0, 'ko', markersize=8, label='中心天体')
+    plt.title(f'抛物线轨道 (E ≈ {energy_parabola[0]:.4f})')
+    plt.xlabel('x 坐标')
+    plt.ylabel('y 坐标')
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    
+    # 双曲线轨道
+    plt.subplot(2, 2, 3)
+    plt.plot(sol_hyperbola.y[0], sol_hyperbola.y[1], 'r-', label='双曲线轨道')
+    plt.plot(0, 0, 'ko', markersize=8, label='中心天体')
+    plt.title(f'双曲线轨道 (E ≈ {energy_hyperbola[0]:.4f})')
+    plt.xlabel('x 坐标')
+    plt.ylabel('y 坐标')
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    
+    # 所有轨道在同一张图上
+    plt.subplot(2, 2, 4)
+    plt.plot(sol_ellipse.y[0], sol_ellipse.y[1], 'b-', label=f'椭圆 (E≈{energy_ellipse[0]:.4f})')
+    plt.plot(sol_parabola.y[0], sol_parabola.y[1], 'g-', label=f'抛物线 (E≈{energy_parabola[0]:.4f})')
+    plt.plot(sol_hyperbola.y[0], sol_hyperbola.y[1], 'r-', label=f'双曲线 (E≈{energy_hyperbola[0]:.4f})')
+    plt.plot(0, 0, 'ko', markersize=8, label='中心天体')
+    plt.title('不同能量的轨道对比')
+    plt.xlabel('x 坐标')
+    plt.ylabel('y 坐标')
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    plt.tight_layout()
+    plt.show()
+    
+    # 绘制能量和角动量随时间的变化（可选）
+    plt.figure(figsize=(14, 5))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(t_eval_ellipse, energy_ellipse, 'b-', label='椭圆轨道能量')
+    plt.plot(t_eval_parabola, energy_parabola, 'g-', label='抛物线轨道能量')
+    plt.plot(t_eval_hyperbola, energy_hyperbola, 'r-', label='双曲线轨道能量')
+    plt.title('能量守恒验证')
+    plt.xlabel('时间')
+    plt.ylabel('能量')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(t_eval_ellipse, angular_momentum_ellipse, 'b-', label='椭圆轨道角动量')
+    plt.plot(t_eval_parabola, angular_momentum_parabola, 'g-', label='抛物线轨道角动量')
+    plt.plot(t_eval_hyperbola, angular_momentum_hyperbola, 'r-', label='双曲线轨道角动量')
+    plt.title('角动量守恒验证')
+    plt.xlabel('时间')
+    plt.ylabel('角动量')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_orbits_by_angular_momentum(gm_val=1.0, rp=0.5, E=-0.5):
+    """
+    绘制固定能量下不同角动量的椭圆轨道
+    """
+    # 计算近心点速度
+    vp = np.sqrt(2 * (E + gm_val / rp))
+    
+    # 设置三个不同的角动量
+    Lz_values = [rp * vp * 0.8, rp * vp, rp * vp * 1.2]
+    labels = [f'Lz = {Lz_values[0]:.4f}', f'Lz = {Lz_values[1]:.4f}', f'Lz = {Lz_values[2]:.4f}']
+    
+    # 计算对应的初始速度
+    v0_values = [Lz / rp for Lz in Lz_values]
+    
+    # 设置积分参数
+    t_start = 0
+    t_end = 20
+    t_eval = np.linspace(t_start, t_end, 1000)
+    
+    # 求解并绘制轨道
+    plt.figure(figsize=(12, 10))
+    
+    # 计算理论轨道参数
+    a = -gm_val / (2 * E)  # 半长轴
+    plt.subplot(2, 2, 1)
+    plt.plot(0, 0, 'ko', markersize=8, label='中心天体')
+    
+    for i, v0 in enumerate(v0_values):
+        # 初始条件：近心点在x轴正半轴
+        initial_conditions = [rp, 0.0, 0.0, v0]
+        
+        # 求解轨道
+        sol = solve_orbit(initial_conditions, (t_start, t_end), t_eval, gm_val)
+        
+        # 计算能量和角动量
+        energy = calculate_energy(sol.y.T, gm_val)
+        angular_momentum = calculate_angular_momentum(sol.y.T)
+        
+        # 计算偏心率
+        e = np.sqrt(1 + (2 * energy[0] * angular_momentum[0]**2) / gm_val**2)
+        
+        # 绘制轨道
+        plt.plot(sol.y[0], sol.y[1], label=f'{labels[i]}, e≈{e:.4f}')
+        
+        print(f"轨道 {i+1}:")
+        print(f"  初始条件: x0={rp}, y0=0, vx0=0, vy0={v0:.4f}")
+        print(f"  能量: {energy[0]:.6f}")
+        print(f"  角动量: {angular_momentum[0]:.6f}")
+        print(f"  偏心率: {e:.6f}")
+        print(f"  半长轴: {a:.6f} (理论值)")
+        print()
+    
+    plt.title('固定能量下不同角动量的椭圆轨道')
+    plt.xlabel('x 坐标')
+    plt.ylabel('y 坐标')
+    plt.legend()
+    plt.grid(True)
+    plt.axis('equal')
+    
+    # 绘制能量随时间的变化
+    plt.subplot(2, 2, 2)
+    for i, v0 in enumerate(v0_values):
+        initial_conditions = [rp, 0.0, 0.0, v0]
+        sol = solve_orbit(initial_conditions, (t_start, t_end), t_eval, gm_val)
+        energy = calculate_energy(sol.y.T, gm_val)
+        plt.plot(t_eval, energy, label=labels[i])
+    
+    plt.title('能量守恒验证')
+    plt.xlabel('时间')
+    plt.ylabel('能量')
+    plt.legend()
+    plt.grid(True)
+    
+    # 绘制角动量随时间的变化
+    plt.subplot(2, 2, 3)
+    for i, v0 in enumerate(v0_values):
+        initial_conditions = [rp, 0.0, 0.0, v0]
+        sol = solve_orbit(initial_conditions, (t_start, t_end), t_eval, gm_val)
+        angular_momentum = calculate_angular_momentum(sol.y.T)
+        plt.plot(t_eval, angular_momentum, label=labels[i])
+    
+    plt.title('角动量守恒验证')
+    plt.xlabel('时间')
+    plt.ylabel('角动量')
+    plt.legend()
+    plt.grid(True)
+    
+    # 绘制偏心率与角动量关系
+    plt.subplot(2, 2, 4)
+    Lz_range = np.linspace(Lz_values[0]*0.8, Lz_values[2]*1.2, 100)
+    e_values = np.sqrt(1 + (2 * E * Lz_range**2) / gm_val**2)
+    plt.plot(Lz_range, e_values, 'b-')
+    
+    # 标记三个轨道的偏心率
+    for i, Lz in enumerate(Lz_values):
+        e = np.sqrt(1 + (2 * E * Lz**2) / gm_val**2)
+        plt.plot(Lz, e, 'ro', markersize=6)
+        plt.annotate(f'e≈{e:.4f}', (Lz, e), textcoords="offset points", 
+                     xytext=(0,10), ha='center')
+    
+    plt.title('偏心率与角动量关系')
+    plt.xlabel('角动量 Lz')
+    plt.ylabel('偏心率 e')
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
-    # --- 学生可以在此区域编写测试代码或进行实验 ---
-    print("平方反比引力场中的运动 - 学生模板")
-
-    # 任务1：实现函数并通过基础测试 (此处不设测试，依赖 tests 文件)
-
-    # 任务2：不同总能量下的轨道绘制
-    # 示例：设置椭圆轨道初始条件 (学生需要根据物理意义自行调整或计算得到)
-    # GM_val_demo = 1.0
-    # ic_ellipse_demo = [1.0, 0.0, 0.0, 0.8]
-    # t_start_demo = 0
-    # t_end_demo = 20
-    # t_eval_demo = np.linspace(t_start_demo, t_end_demo, 500)
-
-    # try:
-    #     sol_ellipse = solve_orbit(ic_ellipse_demo, (t_start_demo, t_end_demo), t_eval_demo, gm_val=GM_val_demo)
-    #     x_ellipse, y_ellipse = sol_ellipse.y[0], sol_ellipse.y[1]
-        
-    #     # 计算能量和角动量 (假设学生已实现)
-    #     # energy = calculate_energy(sol_ellipse.y.T, GM_val_demo)
-    #     # angular_momentum = calculate_angular_momentum(sol_ellipse.y.T)
-    #     # print(f"Ellipse Demo: Initial Energy approx {energy[0]:.3f}")
-
-    #     plt.figure(figsize=(8, 6))
-    #     plt.plot(x_ellipse, y_ellipse, label='椭圆轨道 (示例)')
-    #     plt.plot(0, 0, 'ko', markersize=8, label='中心天体')
-    #     plt.title('轨道运动示例')
-    #     plt.xlabel('x 坐标')
-    #     plt.ylabel('y 坐标')
-    #     plt.legend()
-    #     plt.grid(True)
-    #     plt.axis('equal')
-    #     plt.show()
-    # except NotImplementedError:
-    #     print("请先实现 solve_orbit, calculate_energy, calculate_angular_momentum 函数。")
-    # except Exception as e:
-    #     print(f"运行示例时发生错误: {e}")
-
-    # 学生需要根据“项目说明.md”完成以下任务：
-    # 1. 实现 `derivatives`, `solve_orbit`, `calculate_energy`, `calculate_angular_momentum` 函数。
-    # 2. 针对 E > 0, E = 0, E < 0 三种情况设置初始条件，求解并绘制轨道。
-    # 3. 针对 E < 0 且固定时，改变角动量，求解并绘制轨道。
-    # 4. (可选) 进行坐标转换和对称性分析。
-
-    print("\n请参照 '项目说明.md' 完成各项任务。")
-    print("使用 'tests/test_inverse_square_law_motion.py' 文件来测试你的代码实现。")
-
-    pass # 学生代码的主要部分应在函数内实现
+    print("平方反比引力场中的运动模拟")
+    
+    # 任务A：不同能量的轨道
+    print("\n--- 任务A：不同能量的轨道 ---")
+    plot_orbits_by_energy(gm_val=1.0)
+    
+    # 任务B：不同角动量的椭圆轨道
+    print("\n--- 任务B：不同角动量的椭圆轨道 ---")
+    plot_orbits_by_angular_momentum(gm_val=1.0, rp=0.5, E=-0.5)    
