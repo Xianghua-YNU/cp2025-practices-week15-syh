@@ -94,7 +94,7 @@ def ode_system_for_solve_bvp(x, y):
     
     系统方程：
     dy[0]/dx = y[1]
-    dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x**2
+    dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x^2
     """
     return np.vstack((y[1], -np.sin(x) * y[1] - np.exp(x) * y[0] + np.power(x, 2)))
 
@@ -149,7 +149,7 @@ def solve_bvp_scipy(n_initial_points=11):
     
     y_initial[1] = derivative(x_initial)  # y' 的初始猜测
     
-    # 求解BVP，使用与基准解匹配的参数
+    # 求解BVP，移除不支持的vectorized参数
     sol = solve_bvp(
         ode_system_for_solve_bvp,
         boundary_conditions_for_solve_bvp,
@@ -159,7 +159,6 @@ def solve_bvp_scipy(n_initial_points=11):
         tol=1e-10,            # 进一步降低容差
         bc_tol=1e-10,         # 边界条件容差
         verbose=0,
-        vectorized=True,      # 启用向量化计算提高精度
         jac=None,             # 不提供雅可比矩阵，让solve_bvp自动计算
     )
     
@@ -179,7 +178,6 @@ def solve_bvp_scipy(n_initial_points=11):
             tol=5e-11,
             bc_tol=5e-11,
             verbose=0,
-            vectorized=True,
             jac=None,
         )
         
@@ -206,7 +204,6 @@ def solve_bvp_scipy(n_initial_points=11):
                 tol=1e-11,         # 极高精度
                 bc_tol=1e-11,
                 verbose=0,
-                vectorized=True,
                 jac=None,
             )
             
