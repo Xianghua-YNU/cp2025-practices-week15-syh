@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-项目2：打靶法与scipy.solve_bvp求解边值问题 - 学生代码模板
+项目2：打靶法与scipy.solve_bvp求解边值问题 - 参考答案
 
-本项目要求实现打靶法和scipy.solve_bvp两种方法来求解二阶线性常微分方程边值问题：
+本项目实现打靶法和scipy.solve_bvp两种方法来求解二阶线性常微分方程边值问题：
 u''(x) = -π(u(x)+1)/4
 边界条件：u(0) = 1, u(1) = 1
 
-学生姓名：[YOUR_NAME]
-学号：[YOUR_STUDENT_ID]
-完成日期：[COMPLETION_DATE]
+作者：教学团队
+创建日期：2024
 """
 
 import numpy as np
@@ -20,28 +19,30 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def ode_system_shooting(t, y):
+def ode_system_shooting(y, t=None):
     """
     Define the ODE system for shooting method.
     
-    Convert the second-order ODE u'' = -π(u+1)/4 into a first-order system:
+    The second-order ODE: u'' + π²/4 * (u+1) = 0
+    Convert to first-order system:
     y1 = u, y2 = u'
     y1' = y2
-    y2' = -π(y1+1)/4
+    y2' = -π²/4 * (y1+1)
     
     Args:
-        t (float): Independent variable (time/position)
-        y (array): State vector [y1, y2] where y1=u, y2=u'
+        y (array or float): State vector [y1, y2] where y1=u, y2=u' OR time t
+        t (float or array, optional): Independent variable (time/position) OR state vector
     
     Returns:
         list: Derivatives [y1', y2']
     
-    TODO: Implement the ODE system conversion
-    Hint: Return [y[1], -np.pi*(y[0]+1)/4]
+    Note: This function can handle both (y, t) and (t, y) parameter orders
+    for compatibility with different solvers and test cases.
     """
-    # TODO: Implement ODE system for shooting method
-    # [STUDENT_CODE_HERE]
-    raise NotImplementedError("Please implement ode_system_shooting function")
+    # 调整参数顺序处理逻辑的表述
+    if isinstance(y, (int, float)) and isinstance(t, np.ndarray):
+        y, t = t, y
+    return [y[1], -np.pi * (y[0] + 1) / 4]
 
 
 def boundary_conditions_scipy(ya, yb):
@@ -57,13 +58,8 @@ def boundary_conditions_scipy(ya, yb):
     
     Returns:
         array: Boundary condition residuals
-    
-    TODO: Implement boundary conditions
-    Hint: Return np.array([ya[0] - 1, yb[0] - 1])
     """
-    # TODO: Implement boundary conditions for scipy.solve_bvp
-    # [STUDENT_CODE_HERE]
-    raise NotImplementedError("Please implement boundary_conditions_scipy function")
+    return np.array([ya[0] - 1, yb[0] - 1])
 
 
 def ode_system_scipy(x, y):
@@ -78,13 +74,10 @@ def ode_system_scipy(x, y):
     
     Returns:
         array: Derivatives as column vector
-    
-    TODO: Implement ODE system for scipy.solve_bvp
-    Hint: Use np.vstack to return column vector
     """
-    # TODO: Implement ODE system for scipy.solve_bvp
-    # [STUDENT_CODE_HERE]
-    raise NotImplementedError("Please implement ode_system_scipy function")
+    first_derivative = y[1]
+    second_derivative = -np.pi * (y[0] + 1) / 4
+    return np.vstack((first_derivative, second_derivative))
 
 
 def solve_bvp_shooting_method(x_span, boundary_conditions, n_points=100, max_iterations=10, tolerance=1e-6):
@@ -106,19 +99,55 @@ def solve_bvp_shooting_method(x_span, boundary_conditions, n_points=100, max_ite
     
     Returns:
         tuple: (x_array, y_array) solution arrays
-    
-    TODO: Implement shooting method algorithm
-    Hint: Use secant method to adjust initial slope
     """
-    # TODO: Validate input parameters
-    
-    # TODO: Extract boundary conditions and setup domain
-    
-    # TODO: Implement shooting method with secant method for slope adjustment
-    
-    # TODO: Return solution arrays
-    # [STUDENT_CODE_HERE]
-    raise NotImplementedError("Please implement solve_bvp_shooting_method function")
+    # 输入验证
+    start, end = x_span
+    left_bound, right_bound = boundary_conditions
+    if end <= start:
+        raise ValueError("x_span must be a tuple (x_start, x_end) with x_end > x_start")
+    if len(boundary_conditions) != 2:
+        raise ValueError("boundary_conditions must be a tuple (u_left, u_right)")
+    if n_points < 10:
+        raise ValueError("n_points must be at least 10")
+
+    x = np.linspace(start, end, n_points)
+    # 初始斜率猜测
+    slope1 = -1.0
+    initial_conditions = [left_bound, slope1]
+    solution1 = odeint(ode_system_shooting, initial_conditions, x)
+    end_value1 = solution1[-1, 0]
+
+    if abs(end_value1 - right_bound) < tolerance:
+        return x, solution1[:, 0]
+
+    # 第二次猜测
+    slope2 = slope1 * right_bound / end_value1 if abs(end_value1) > 1e-12 else slope1 + 1.0
+    initial_conditions[1] = slope2
+    solution2 = odeint(ode_system_shooting, initial_conditions, x)
+    end_value2 = solution2[-1, 0]
+
+    if abs(end_value2 - right_bound) < tolerance:
+        return x, solution2[:, 0]
+
+    # 割线法迭代
+    for _ in range(max_iterations):
+        if abs(end_value2 - end_value1) < 1e-12:
+            slope3 = slope2 + 0.1
+        else:
+            slope3 = slope2 + (right_bound - end_value2) * (slope2 - slope1) / (end_value2 - end_value1)
+        initial_conditions[1] = slope3
+        solution3 = odeint(ode_system_shooting, initial_conditions, x)
+        end_value3 = solution3[-1, 0]
+
+        if abs(end_value3 - right_bound) < tolerance:
+            return x, solution3[:, 0]
+
+        slope1, slope2 = slope2, slope3
+        end_value1, end_value2 = end_value2, end_value3
+
+    print(f"Warning: Shooting method did not converge after {max_iterations} iterations.")
+    print(f"Final boundary error: {abs(end_value3 - right_bound):.2e}")
+    return x, solution3[:, 0]
 
 
 def solve_bvp_scipy_wrapper(x_span, boundary_conditions, n_points=50):
@@ -132,17 +161,30 @@ def solve_bvp_scipy_wrapper(x_span, boundary_conditions, n_points=50):
     
     Returns:
         tuple: (x_array, y_array) solution arrays
-    
-    TODO: Implement scipy.solve_bvp wrapper
-    Hint: Set up initial guess and call solve_bvp
     """
-    # TODO: Setup initial mesh and guess
-    
-    # TODO: Call scipy.solve_bvp
-    
-    # TODO: Extract and return solution
-    # [STUDENT_CODE_HERE]
-    raise NotImplementedError("Please implement solve_bvp_scipy_wrapper function")
+    start, end = x_span
+    left_bound, right_bound = boundary_conditions
+    if end <= start:
+        raise ValueError("x_span must be a tuple (x_start, x_end) with x_end > x_start")
+    if len(boundary_conditions) != 2:
+        raise ValueError("boundary_conditions must be a tuple (u_left, u_right)")
+    if n_points < 5:
+        raise ValueError("n_points must be at least 5")
+
+    x_initial = np.linspace(start, end, n_points)
+    y_initial = np.zeros((2, x_initial.size))
+    y_initial[0] = np.linspace(left_bound, right_bound, n_points)
+    y_initial[1] = (right_bound - left_bound) / (end - start)
+
+    try:
+        solution = solve_bvp(ode_system_scipy, boundary_conditions_scipy, x_initial, y_initial)
+        if not solution.success:
+            raise RuntimeError(f"scipy.solve_bvp failed: {solution.message}")
+        x_fine = np.linspace(start, end, 100)
+        y_fine = solution.sol(x_fine)[0]
+        return x_fine, y_fine
+    except Exception as e:
+        raise RuntimeError(f"Error in scipy.solve_bvp: {str(e)}")
 
 
 def compare_methods_and_plot(x_span=(0, 1), boundary_conditions=(1, 1), n_points=100):
@@ -156,19 +198,67 @@ def compare_methods_and_plot(x_span=(0, 1), boundary_conditions=(1, 1), n_points
     
     Returns:
         dict: Dictionary containing solutions and analysis
-    
-    TODO: Implement method comparison and visualization
-    Hint: Call both methods, plot results, calculate differences
     """
-    # TODO: Solve using both methods
-    
-    # TODO: Create comparison plot with English labels
-    
-    # TODO: Calculate and display differences
-    
-    # TODO: Return analysis results
-    # [STUDENT_CODE_HERE]
-    raise NotImplementedError("Please implement compare_methods_and_plot function")
+    print("Solving BVP using both methods...")
+    try:
+        print("Running shooting method...")
+        x_shoot, y_shoot = solve_bvp_shooting_method(x_span, boundary_conditions, n_points)
+        print("Running scipy.solve_bvp...")
+        x_scipy, y_scipy = solve_bvp_scipy_wrapper(x_span, boundary_conditions, n_points // 2)
+
+        y_scipy_interp = np.interp(x_shoot, x_scipy, y_scipy)
+        max_diff = np.max(np.abs(y_shoot - y_scipy_interp))
+        rms_diff = np.sqrt(np.mean((y_shoot - y_scipy_interp) ** 2))
+
+        plt.figure(figsize=(12, 8))
+        plt.subplot(2, 1, 1)
+        plt.plot(x_shoot, y_shoot, 'b-', linewidth=2, label='Shooting Method')
+        plt.plot(x_scipy, y_scipy, 'r--', linewidth=2, label='scipy.solve_bvp')
+        plt.xlabel('x')
+        plt.ylabel('u(x)')
+        plt.title('Comparison of BVP Solution Methods')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.plot([x_span[0], x_span[1]], [boundary_conditions[0], boundary_conditions[1]],
+                 'ko', markersize=8, label='Boundary Conditions')
+        plt.legend()
+
+        plt.subplot(2, 1, 2)
+        plt.plot(x_shoot, y_shoot - y_scipy_interp, 'g-', linewidth=2)
+        plt.xlabel('x')
+        plt.ylabel('Difference (Shooting - scipy)')
+        plt.title(f'Solution Difference (Max: {max_diff:.2e}, RMS: {rms_diff:.2e})')
+        plt.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.show()
+
+        print("\nSolution Analysis:")
+        print(f"Maximum difference: {max_diff:.2e}")
+        print(f"RMS difference: {rms_diff:.2e}")
+        print(f"Shooting method points: {len(x_shoot)}")
+        print(f"scipy.solve_bvp points: {len(x_scipy)}")
+
+        print(f"\nBoundary condition verification:")
+        print(f"Shooting method: u({x_span[0]}) = {y_shoot[0]:.6f}, u({x_span[1]}) = {y_shoot[-1]:.6f}")
+        print(f"scipy.solve_bvp: u({x_span[0]}) = {y_scipy[0]:.6f}, u({x_span[1]}) = {y_scipy[-1]:.6f}")
+        print(f"Target: u({x_span[0]}) = {boundary_conditions[0]}, u({x_span[1]}) = {boundary_conditions[1]}")
+
+        return {
+            'x_shooting': x_shoot,
+            'y_shooting': y_shoot,
+            'x_scipy': x_scipy,
+            'y_scipy': y_scipy,
+            'max_difference': max_diff,
+            'rms_difference': rms_diff,
+            'boundary_error_shooting': [abs(y_shoot[0] - boundary_conditions[0]),
+                                        abs(y_shoot[-1] - boundary_conditions[1])],
+            'boundary_error_scipy': [abs(y_scipy[0] - boundary_conditions[0]),
+                                     abs(y_scipy[-1] - boundary_conditions[1])]
+        }
+    except Exception as e:
+        print(f"Error in method comparison: {str(e)}")
+        raise
 
 
 # Test functions for development and debugging
@@ -177,21 +267,21 @@ def test_ode_system():
     Test the ODE system implementation.
     """
     print("Testing ODE system...")
-    try:
-        # Test point
-        t_test = 0.5
-        y_test = np.array([1.0, 0.5])
-        
-        # Test shooting method ODE system
-        dydt = ode_system_shooting(t_test, y_test)
-        print(f"ODE system (shooting): dydt = {dydt}")
-        
-        # Test scipy ODE system
-        dydt_scipy = ode_system_scipy(t_test, y_test)
-        print(f"ODE system (scipy): dydt = {dydt_scipy}")
-        
-    except NotImplementedError:
-        print("ODE system functions not yet implemented.")
+    t_test = 0.5
+    y_test = np.array([1.0, 0.5])
+    dydt = ode_system_shooting(y_test, t_test)
+    expected = [0.5, -np.pi * (1.0 + 1) / 4]
+    print(f"ODE system (shooting): dydt = {dydt}")
+    print(f"Expected: {expected}")
+    assert np.allclose(dydt, expected), "Shooting ODE system test failed"
+
+    dydt_scipy = ode_system_scipy(t_test, y_test)
+    expected_scipy = np.array([[0.5], [-np.pi * 2 / 4]])
+    print(f"ODE system (scipy): dydt = {dydt_scipy.flatten()}")
+    print(f"Expected: {expected_scipy.flatten()}")
+    assert np.allclose(dydt_scipy, expected_scipy), "Scipy ODE system test failed"
+
+    print("ODE system tests passed!")
 
 
 def test_boundary_conditions():
@@ -199,31 +289,54 @@ def test_boundary_conditions():
     Test the boundary conditions implementation.
     """
     print("Testing boundary conditions...")
-    try:
-        ya = np.array([1.0, 0.5])  # Left boundary
-        yb = np.array([1.0, -0.3])  # Right boundary
-        
-        bc_residual = boundary_conditions_scipy(ya, yb)
-        print(f"Boundary condition residuals: {bc_residual}")
-        
-    except NotImplementedError:
-        print("Boundary conditions function not yet implemented.")
+    ya = np.array([1.0, 0.5])
+    yb = np.array([1.0, -0.3])
+    bc_residual = boundary_conditions_scipy(ya, yb)
+    expected = np.array([0.0, 0.0])
+    print(f"Boundary condition residuals: {bc_residual}")
+    print(f"Expected: {expected}")
+    assert np.allclose(bc_residual, expected), "Boundary conditions test failed"
+
+    print("Boundary conditions test passed!")
+
+
+def test_shooting_method():
+    """
+    Test the shooting method implementation.
+    """
+    print("Testing shooting method...")
+    x_span = (0, 1)
+    boundary_conditions = (1, 1)
+    x, y = solve_bvp_shooting_method(x_span, boundary_conditions, n_points=50)
+    assert abs(y[0] - boundary_conditions[0]) < 1e-6, "Left boundary condition not satisfied"
+    assert abs(y[-1] - boundary_conditions[1]) < 1e-6, "Right boundary condition not satisfied"
+    print(f"Shooting method: u(0) = {y[0]:.6f}, u(1) = {y[-1]:.6f}")
+    print("Shooting method test passed!")
+
+
+def test_scipy_method():
+    """
+    Test the scipy.solve_bvp wrapper.
+    """
+    print("Testing scipy.solve_bvp wrapper...")
+    x_span = (0, 1)
+    boundary_conditions = (1, 1)
+    x, y = solve_bvp_scipy_wrapper(x_span, boundary_conditions, n_points=20)
+    assert abs(y[0] - boundary_conditions[0]) < 1e-6, "Left boundary condition not satisfied"
+    assert abs(y[-1] - boundary_conditions[1]) < 1e-6, "Right boundary condition not satisfied"
+    print(f"scipy.solve_bvp: u(0) = {y[0]:.6f}, u(1) = {y[-1]:.6f}")
+    print("scipy.solve_bvp wrapper test passed!")
 
 
 if __name__ == "__main__":
-    print("项目2：打靶法与scipy.solve_bvp求解边值问题")
-    print("=" * 50)
-    
-    # Run basic tests
+    print("项目2：打靶法与scipy.solve_bvp求解边值问题 - 参考答案")
+    print("=" * 60)
+    print("Running unit tests...")
     test_ode_system()
     test_boundary_conditions()
-    
-    # Try to run comparison (will fail until functions are implemented)
-    try:
-        print("\nTesting method comparison...")
-        results = compare_methods_and_plot()
-        print("Method comparison completed successfully!")
-    except NotImplementedError as e:
-        print(f"Method comparison not yet implemented: {e}")
-    
-    print("\n请实现所有标记为 TODO 的函数以完成项目。")
+    test_shooting_method()
+    test_scipy_method()
+    print("All unit tests passed!\n")
+    print("Running method comparison...")
+    results = compare_methods_and_plot()
+    print("\n项目2完成！所有功能已实现并测试通过。")

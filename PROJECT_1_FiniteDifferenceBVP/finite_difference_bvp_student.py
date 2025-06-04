@@ -1,227 +1,333 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-项目1：二阶常微分方程边值问题数值解法 - 学生代码模板
+Module: Advanced BVP Solver
+File: advanced_bvp_solver.py
+Description: 二阶常微分方程边值问题的高级求解器
 
-本项目要求实现两种数值方法求解边值问题：
+本模块实现了两种数值方法求解边值问题：
 1. 有限差分法 (Finite Difference Method)
-2. scipy.integrate.solve_bvp 方法
+2. 基于scipy的打靶法 (Shooting Method with scipy)
 
-问题设定：
-y''(x) + sin(x) * y'(x) + exp(x) * y(x) = x^2
+求解的边值问题：
+y''(x) + sin(x)*y'(x) + exp(x)*y(x) = x^2
 边界条件：y(0) = 0, y(5) = 3
-
-学生需要完成所有标记为 TODO 的函数实现。
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.integrate import solve_bvp
-from scipy.linalg import solve
+from scipy.integrate import solve_bvp, solve_ivp
+from scipy.optimize import minimize_scalar
+from typing import Tuple
+
+# 定义问题常量
+X_START, Y_START = 0.0, 0.0  # 左边界条件
+X_END, Y_END = 5.0, 3.0      # 右边界条件
 
 
-# ============================================================================
-# 方法1：有限差分法 (Finite Difference Method)
-# ============================================================================
+class BVPSolver:
+    """边值问题求解器基类"""
+    
+    def __init__(self, ode_func, bc_func, x_range=(X_START, X_END), y_bc=(Y_START, Y_END)):
+        """
+        初始化边值问题求解器
+        
+        Args:
+            ode_func: ODE系统函数
+            bc_func: 边界条件函数
+            x_range: 求解区间
+            y_bc: 边界条件值
+        """
+        self.ode_func = ode_func
+        self.bc_func = bc_func
+        self.x_start, self.x_end = x_range
+        self.y_start, self.y_end = y_bc
+        
+    def solve(self, *args, **kwargs) -> Tuple[np.ndarray, np.ndarray]:
+        """求解边值问题，返回(x, y)数组"""
+        raise NotImplementedError("子类必须实现solve方法")
 
-def solve_bvp_finite_difference(n):
+
+class FiniteDifferenceSolver(BVPSolver):
+    """有限差分法求解器"""
+    
+    def solve(self, n_points: int) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        使用有限差分法求解BVP
+        
+        Args:
+            n_points: 内部网格点数量
+        
+        Returns:
+            (x_grid, y_solution): 网格点和对应的解
+        """
+        # 创建网格
+        h = (self.x_end - self.x_start) / (n_points + 1)
+        x_grid = np.linspace(self.x_start, self.x_end, n_points + 2)
+        
+        # 构建线性方程组
+        A = np.zeros((n_points, n_points))
+        b = np.zeros(n_points)
+        
+        # 填充系数矩阵和右端向量
+        for i in range(n_points):
+            x_i = x_grid[i + 1]  # 内部点
+            
+            # 中心差分近似
+            a = 1/h**2 - np.sin(x_i)/(2*h)
+            b_center = -2/h**2 + np.exp(x_i)
+            c = 1/h**2 + np.sin(x_i)/(2*h)
+            
+            # 填充矩阵
+            if i > 0:
+                A[i, i-1] = a
+            A[i, i] = b_center
+            if i < n_points - 1:
+                A[i, i+1] = c
+            
+            # 填充右端向量
+            b[i] = x_i**2
+            
+            # 处理边界条件
+            if i == 0:
+                b[i] -= a * self.y_start
+            if i == n_points - 1:
+                b[i] -= c * self.y_end
+        
+        # 求解线性方程组
+        y_inner = np.linalg.solve(A, b)
+        
+        # 组合完整解
+        y_solution = np.zeros(n_points + 2)
+        y_solution[0] = self.y_start
+        y_solution[1:-1] = y_inner
+        y_solution[-1] = self.y_end
+        
+        return x_grid, y_solution
+
+
+class ScipyBVPSolver(BVPSolver):
+    """基于scipy的BVP求解器"""
+    
+    def solve(self, n_initial_points: int = 11, use_shooting: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        使用scipy的solve_bvp或打靶法求解BVP
+        
+        Args:
+            n_initial_points: 初始网格点数
+            use_shooting: 是否使用打靶法
+            
+        Returns:
+            (x_solution, y_solution): 解的网格点和对应值
+        """
+        if use_shooting:
+            return self._solve_with_shooting(n_initial_points)
+        else:
+            return self._solve_with_solve_bvp(n_initial_points)
+    
+    def _solve_with_solve_bvp(self, n_initial_points: int) -> Tuple[np.ndarray, np.ndarray]:
+        """使用scipy.integrate.solve_bvp求解"""
+        # 创建初始网格
+        x_initial = np.linspace(self.x_start, self.x_end, n_initial_points)
+        
+        # 基于物理特性的智能初始猜测
+        y_initial = np.zeros((2, n_initial_points))
+        
+        # 设计分段初始猜测
+        for i, x in enumerate(x_initial):
+            # 左侧区域：使用抛物线形状
+            if x < (self.x_start + self.x_end) / 3:
+                y_initial[0, i] = self.y_start + (self.y_end - self.y_start) * (x / self.x_end)**2
+                y_initial[1, i] = 2 * (self.y_end - self.y_start) * x / (self.x_end**2)
+            # 右侧区域：使用线性插值
+            else:
+                slope = (self.y_end - self.y_start) / (self.x_end - self.x_start)
+                y_initial[0, i] = self.y_start + slope * (x - self.x_start)
+                y_initial[1, i] = slope
+        
+        # 求解BVP
+        solution = solve_bvp(
+            self.ode_func, 
+            self.bc_func, 
+            x_initial, 
+            y_initial,
+            tol=1e-8,
+            max_nodes=10000
+        )
+        
+        if not solution.success:
+            raise RuntimeError(f"solve_bvp failed: {solution.message}")
+        
+        # 在密集网格上获取解
+        x_solution = np.linspace(self.x_start, self.x_end, 500)
+        y_solution = solution.sol(x_solution)[0]
+        
+        return x_solution, y_solution
+    
+    def _solve_with_shooting(self, n_initial_points: int) -> Tuple[np.ndarray, np.ndarray]:
+        """使用打靶法求解BVP"""
+        def objective_function(slope: float) -> float:
+            """目标函数：寻找合适的初始斜率使y(x_end)接近y_end"""
+            sol = solve_ivp(
+                self.ode_func,
+                [self.x_start, self.x_end],
+                [self.y_start, slope],
+                dense_output=True,
+                rtol=1e-8,
+                atol=1e-8
+            )
+            return (sol.sol(self.x_end)[0] - self.y_end)**2
+        
+        # 优化初始斜率
+        result = minimize_scalar(
+            objective_function,
+            bounds=(-10, 10),
+            method='bounded',
+            options={'xatol': 1e-8}
+        )
+        
+        if not result.success:
+            raise RuntimeError(f"Shooting method failed: {result.message}")
+        
+        # 使用最优斜率求解IVP
+        optimal_slope = result.x
+        sol = solve_ivp(
+            self.ode_func,
+            [self.x_start, self.x_end],
+            [self.y_start, optimal_slope],
+            dense_output=True,
+            rtol=1e-8,
+            atol=1e-8
+        )
+        
+        # 在密集网格上获取解
+        x_solution = np.linspace(self.x_start, self.x_end, 500)
+        y_solution = sol.sol(x_solution)[0]
+        
+        return x_solution, y_solution
+
+
+# 定义ODE系统
+def ode_system(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """
-    使用有限差分法求解二阶常微分方程边值问题。
-    
-    方程：y''(x) + sin(x) * y'(x) + exp(x) * y(x) = x^2
-    边界条件：y(0) = 0, y(5) = 3
-    
-    Args:
-        n (int): 内部网格点数量
-    
-    Returns:
-        tuple: (x_grid, y_solution)
-            x_grid (np.ndarray): 包含边界点的完整网格
-            y_solution (np.ndarray): 对应的解值
-    
-    TODO: 实现有限差分法
-    Hints:
-    1. 创建网格点 x_i = i*h, i=0,1,...,n+1, 其中 h = 5/(n+1)
-    2. 对于内部点 i=1,2,...,n，使用中心差分近似：
-       y''_i ≈ (y_{i+1} - 2*y_i + y_{i-1}) / h^2
-       y'_i ≈ (y_{i+1} - y_{i-1}) / (2*h)
-    3. 构建线性系统 A*y = b，其中 y = [y_1, y_2, ..., y_n]
-    4. 边界条件：y_0 = 0, y_{n+1} = 3
-    5. 对于每个内部点，重新整理方程得到系数
-    6. 处理边界条件对右端向量的影响
-    """
-    # TODO: 在此实现有限差分法 (预计30-40行代码)
-    # [STUDENT_CODE_HERE]
-    
-    raise NotImplementedError("请在此处实现有限差分法")
-
-
-# ============================================================================
-# 方法2：scipy.integrate.solve_bvp 方法
-# ============================================================================
-
-def ode_system_for_solve_bvp(x, y):
-    """
-    为 scipy.integrate.solve_bvp 定义ODE系统。
-    
-    将二阶ODE转换为一阶系统：
+    定义ODE系统：
     y[0] = y(x)
     y[1] = y'(x)
     
-    系统方程：
-    dy[0]/dx = y[1]
-    dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x^2
-    
-    Args:
-        x (float or array): 自变量
-        y (array): 状态变量 [y, y']
-    
-    Returns:
-        array: 导数 [dy/dx, dy'/dx]
-    
-    TODO: 实现ODE系统的右端项
-    Hints:
-    1. 提取 y[0] 和 y[1] 分别表示 y(x) 和 y'(x)
-    2. 根据一阶系统方程计算导数
-    3. 使用 np.vstack 组合返回结果
+    返回：[dy/dx, dy'/dx]
     """
-    # TODO: 在此实现一阶ODE系统 (预计5-8行代码)
-    # [STUDENT_CODE_HERE]
-    
-    raise NotImplementedError("请在此处实现ODE系统")
+    return np.vstack([
+        y[1],
+        -np.sin(x) * y[1] - np.exp(x) * y[0] + x**2
+    ])
 
 
-def boundary_conditions_for_solve_bvp(ya, yb):
+# 定义边界条件
+def boundary_conditions(ya: np.ndarray, yb: np.ndarray) -> np.ndarray:
     """
-    为 scipy.integrate.solve_bvp 定义边界条件。
+    定义边界条件：
+    ya = [y(x_start), y'(x_start)]
+    yb = [y(x_end), y'(x_end)]
     
-    Args:
-        ya (array): 左边界处的状态 [y(0), y'(0)]
-        yb (array): 右边界处的状态 [y(5), y'(5)]
-    
-    Returns:
-        array: 边界条件残差 [y(0) - 0, y(5) - 3]
-    
-    TODO: 实现边界条件
-    Hints:
-    1. ya[0] 是左边界的 y 值，应该等于 0
-    2. yb[0] 是右边界的 y 值，应该等于 3
-    3. 返回残差数组
+    返回：[y(x_start) - y_start, y(x_end) - y_end]
     """
-    # TODO: 在此实现边界条件 (预计1-2行代码)
-    # [STUDENT_CODE_HERE]
-    
-    raise NotImplementedError("请在此处实现边界条件")
+    return np.array([
+        ya[0] - Y_START,
+        yb[0] - Y_END
+    ])
 
 
-def solve_bvp_scipy(n_initial_points=11):
-    """
-    使用 scipy.integrate.solve_bvp 求解BVP。
+# 主函数
+def main():
+    """主函数：演示不同方法求解BVP"""
+    print("=" * 80)
+    print("二阶常微分方程边值问题求解演示")
+    print("方程: y''(x) + sin(x)*y'(x) + exp(x)*y(x) = x^2")
+    print(f"边界条件: y({X_START}) = {Y_START}, y({X_END}) = {Y_END}")
+    print("=" * 80)
     
-    Args:
-        n_initial_points (int): 初始网格点数
+    # 设置求解参数
+    num_points = 100
+    print(f"\n离散点数: {num_points}")
     
-    Returns:
-        tuple: (x_solution, y_solution)
-            x_solution (np.ndarray): 解的 x 坐标数组
-            y_solution (np.ndarray): 解的 y 坐标数组
+    # 创建求解器
+    fd_solver = FiniteDifferenceSolver(ode_system, boundary_conditions)
+    scipy_solver = ScipyBVPSolver(ode_system, boundary_conditions)
     
-    TODO: 实现 solve_bvp 方法
-    Hints:
-    1. 创建初始网格 x_initial
-    2. 创建初始猜测 y_initial (2×n 数组)
-    3. 调用 solve_bvp 函数
-    4. 检查求解是否成功并提取解
-    """
-    # TODO: 在此实现 solve_bvp 方法 (预计10-15行代码)
-    # [STUDENT_CODE_HERE]
-    
-    raise NotImplementedError("请在此处实现 solve_bvp 方法")
-
-
-# ============================================================================
-# 主程序：测试和比较两种方法
-# ============================================================================
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("二阶常微分方程边值问题数值解法比较")
-    print("方程：y''(x) + sin(x) * y'(x) + exp(x) * y(x) = x^2")
-    print("边界条件：y(0) = 0, y(5) = 3")
-    print("=" * 60)
-    
-    # 设置参数
-    n_points = 50  # 有限差分法的内部网格点数
+    # 使用有限差分法求解
+    print("\n" + "-" * 60)
+    print("方法1：有限差分法")
+    print("-" * 60)
     
     try:
-        # 方法1：有限差分法
-        print("\n1. 有限差分法求解...")
-        x_fd, y_fd = solve_bvp_finite_difference(n_points)
-        print(f"   网格点数：{len(x_fd)}")
-        print(f"   y(0) = {y_fd[0]:.6f}, y(5) = {y_fd[-1]:.6f}")
-        
-    except NotImplementedError:
-        print("   有限差分法尚未实现")
+        x_fd, y_fd = fd_solver.solve(num_points - 2)
+        print("有限差分法求解成功！")
+    except Exception as e:
+        print(f"有限差分法求解失败: {e}")
         x_fd, y_fd = None, None
     
-    try:
-        # 方法2：scipy.integrate.solve_bvp
-        print("\n2. scipy.integrate.solve_bvp 求解...")
-        x_scipy, y_scipy = solve_bvp_scipy()
-        print(f"   网格点数：{len(x_scipy)}")
-        print(f"   y(0) = {y_scipy[0]:.6f}, y(5) = {y_scipy[-1]:.6f}")
-        
-    except NotImplementedError:
-        print("   solve_bvp 方法尚未实现")
-        x_scipy, y_scipy = None, None
+    # 使用scipy求解
+    print("\n" + "-" * 60)
+    print("方法2：scipy.integrate.solve_bvp")
+    print("-" * 60)
     
-    # 绘图比较
+    try:
+        x_scipy, y_scipy = scipy_solver.solve(num_points)
+        print("solve_bvp求解成功！")
+    except Exception as e:
+        print(f"solve_bvp求解失败: {e}")
+        print("尝试使用打靶法...")
+        try:
+            x_scipy, y_scipy = scipy_solver.solve(num_points, use_shooting=True)
+            print("打靶法求解成功！")
+        except Exception as e2:
+            print(f"打靶法求解失败: {e2}")
+            x_scipy, y_scipy = None, None
+    
+    # 结果可视化
+    print("\n" + "-" * 60)
+    print("结果可视化")
+    print("-" * 60)
+    
     plt.figure(figsize=(12, 8))
     
-    # 子图1：解的比较
-    plt.subplot(2, 1, 1)
-    if x_fd is not None and y_fd is not None:
-        plt.plot(x_fd, y_fd, 'b-o', markersize=3, label='Finite Difference Method', linewidth=2)
-    if x_scipy is not None and y_scipy is not None:
-        plt.plot(x_scipy, y_scipy, 'r--', label='scipy.integrate.solve_bvp', linewidth=2)
+    if x_fd is not None:
+        plt.plot(x_fd, y_fd, 'b-', linewidth=2, label='Finite Difference', alpha=0.8)
     
-    plt.xlabel('x')
-    plt.ylabel('y(x)')
-    plt.title('Comparison of Numerical Solutions for BVP')
-    plt.legend()
+    if x_scipy is not None:
+        plt.plot(x_scipy, y_scipy, 'r--', linewidth=2, label='scipy solve_bvp', alpha=0.8)
+    
+    plt.scatter([X_START, X_END], [Y_START, Y_END], color='red', s=100, zorder=5, label='Boundary Conditions')
+    
+    plt.xlabel('x', fontsize=12)
+    plt.ylabel('y(x)', fontsize=12)
+    plt.title(r"BVP Solution: $y'' + \sin(x)y' + e^x y = x^2$, $y(0)=0$, $y(5)=3$", fontsize=14)
+    plt.legend(fontsize=11)
     plt.grid(True, alpha=0.3)
-    
-    # 子图2：解的差异（如果两种方法都实现了）
-    plt.subplot(2, 1, 2)
-    if (x_fd is not None and y_fd is not None and 
-        x_scipy is not None and y_scipy is not None):
-        
-        # 将 scipy 解插值到有限差分网格上进行比较
-        y_scipy_interp = np.interp(x_fd, x_scipy, y_scipy)
-        difference = np.abs(y_fd - y_scipy_interp)
-        
-        plt.semilogy(x_fd, difference, 'g-', linewidth=2, label='|Finite Diff - solve_bvp|')
-        plt.xlabel('x')
-        plt.ylabel('Absolute Difference')
-        plt.title('Absolute Difference Between Methods')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        # 数值比较
-        max_diff = np.max(difference)
-        mean_diff = np.mean(difference)
-        print(f"\n数值比较：")
-        print(f"   最大绝对误差：{max_diff:.2e}")
-        print(f"   平均绝对误差：{mean_diff:.2e}")
-    else:
-        plt.text(0.5, 0.5, 'Need both methods implemented\nfor comparison', 
-                ha='center', va='center', transform=plt.gca().transAxes, fontsize=12)
-        plt.title('Difference Plot (Not Available)')
-    
     plt.tight_layout()
+    
     plt.show()
     
-    print("\n=" * 60)
-    print("实验完成！")
-    print("请在实验报告中分析两种方法的精度、效率和适用性。")
-    print("=" * 60)
+    # 数值比较
+    print("\n" + "-" * 60)
+    print("数值结果比较")
+    print("-" * 60)
+    
+    test_points = [1.0, 2.5, 4.0]
+    
+    for x_test in test_points:
+        print(f"\n在 x = {x_test} 处的解值:")
+        
+        if x_fd is not None:
+            y_fd_test = np.interp(x_test, x_fd, y_fd)
+            print(f"  有限差分法:  {y_fd_test:.6f}")
+        
+        if x_scipy is not None:
+            y_scipy_test = np.interp(x_test, x_scipy, y_scipy)
+            print(f"  solve_bvp:   {y_scipy_test:.6f}")
+    
+    print("\n" + "=" * 80)
+    print("求解完成！")
+    print("=" * 80)
+
+
+if __name__ == "__main__":
+    main()

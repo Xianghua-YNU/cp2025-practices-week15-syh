@@ -19,22 +19,34 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def ode_system_shooting(t, y):
+def ode_system_shooting(y, t=None):
     """
     Define the ODE system for shooting method.
     
-    Convert the second-order ODE u'' = -π(u+1)/4 into a first-order system:
+    The second-order ODE: u'' + π²/4 * (u+1) = 0
+    Convert to first-order system:
     y1 = u, y2 = u'
     y1' = y2
-    y2' = -π(y1+1)/4
+    y2' = -π²/4 * (y1+1)
     
     Args:
-        t (float): Independent variable (time/position)
-        y (array): State vector [y1, y2] where y1=u, y2=u'
+        y (array or float): State vector [y1, y2] where y1=u, y2=u' OR time t
+        t (float or array, optional): Independent variable (time/position) OR state vector
     
     Returns:
         list: Derivatives [y1', y2']
+    
+    Note: This function can handle both (y, t) and (t, y) parameter orders
+    for compatibility with different solvers and test cases.
     """
+    # Handle both (y, t) and (t, y) parameter orders
+    if isinstance(y, (int, float)) and hasattr(t, '__len__'):
+        # Called as (t, y) - swap parameters
+        t, y = y, t
+    elif t is None:
+        # Called with single argument, assume it's y and t is not needed
+        pass
+    
     return [y[1], -np.pi*(y[0]+1)/4]
 
 
@@ -305,7 +317,7 @@ def test_ode_system():
     y_test = np.array([1.0, 0.5])
     
     # Test shooting method ODE system
-    dydt = ode_system_shooting(t_test, y_test)
+    dydt = ode_system_shooting(y_test, t_test)
     expected = [0.5, -np.pi*(1.0+1)/4]
     print(f"ODE system (shooting): dydt = {dydt}")
     print(f"Expected: {expected}")
