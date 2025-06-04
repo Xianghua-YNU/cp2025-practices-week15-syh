@@ -149,17 +149,12 @@ def solve_bvp_scipy(n_initial_points=11):
     
     y_initial[1] = derivative(x_initial)  # y' 的初始猜测
     
-    # 求解BVP，移除不支持的vectorized参数
+    # 求解BVP，只保留旧版SciPy支持的参数
     sol = solve_bvp(
         ode_system_for_solve_bvp,
         boundary_conditions_for_solve_bvp,
         x_initial,
         y_initial,
-        max_nodes=50000,      # 增加最大节点数
-        tol=1e-10,            # 进一步降低容差
-        bc_tol=1e-10,         # 边界条件容差
-        verbose=0,
-        jac=None,             # 不提供雅可比矩阵，让solve_bvp自动计算
     )
     
     if not sol.success:
@@ -174,16 +169,11 @@ def solve_bvp_scipy(n_initial_points=11):
             boundary_conditions_for_solve_bvp,
             x_dense,
             y_dense,
-            max_nodes=50000,
-            tol=5e-11,
-            bc_tol=5e-11,
-            verbose=0,
-            jac=None,
         )
         
         if not sol.success:
-            # 最后的备用方案：使用分段线性插值作为初始猜测，并增加边界点密度
-            print(f"Warning: solve_bvp 多次尝试失败，使用分段线性插值作为初始猜测: {sol.message}")
+            # 最后的备用方案：使用分段线性插值作为初始猜测
+            print(f"Warning: solve_bvp 尝试失败，使用分段线性插值作为初始猜测: {sol.message}")
             key_points = np.array([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
             key_values = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7, 3.0])
             y_piecewise = np.interp(x_dense, key_points, key_values)
@@ -200,11 +190,6 @@ def solve_bvp_scipy(n_initial_points=11):
                 boundary_conditions_for_solve_bvp,
                 x_dense,
                 np.vstack((y_piecewise, y_piecewise_deriv)),
-                max_nodes=100000,  # 极大的最大节点数
-                tol=1e-11,         # 极高精度
-                bc_tol=1e-11,
-                verbose=0,
-                jac=None,
             )
             
             if not sol.success:
