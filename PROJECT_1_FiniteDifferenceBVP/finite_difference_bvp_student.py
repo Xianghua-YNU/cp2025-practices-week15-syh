@@ -94,9 +94,10 @@ def ode_system_for_solve_bvp(x, y):
     
     系统方程：
     dy[0]/dx = y[1]
-    dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x^2
+    dy[1]/dx = -sin(x) * y[1] - exp(x) * y[0] + x**2
     """
-    return np.vstack((y[1], -np.sin(x) * y[1] - np.exp(x) * y[0] + x^2))
+    # 修正：使用 np.power(x, 2) 代替 x^2
+    return np.vstack((y[1], -np.sin(x) * y[1] - np.exp(x) * y[0] + np.power(x, 2)))
 
 
 def boundary_conditions_for_solve_bvp(ya, yb):
